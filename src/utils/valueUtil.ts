@@ -118,6 +118,10 @@ export function defaultGetValueFromEvent(valuePropName: string, ...args: EventAr
     return (event.target as HTMLInputElement)[valuePropName];
   }
 
+  if (event && Array.isArray(event)) {
+    return event.map(e => (e.nativeEvent ? {} : e));
+  }
+
   return event;
 }
 
