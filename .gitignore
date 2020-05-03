@@ -3,7 +3,6 @@
 *.log
 node_modules
 coverage/
-es/
 lib/
 ~*
 yarn.lock
