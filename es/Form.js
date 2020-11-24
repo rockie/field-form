@@ -1,3 +1,4 @@
+import _extends from "@babel/runtime/helpers/esm/extends";
 import _defineProperty from "@babel/runtime/helpers/esm/defineProperty";
 import _slicedToArray from "@babel/runtime/helpers/esm/slicedToArray";
 import _objectWithoutProperties from "@babel/runtime/helpers/esm/objectWithoutProperties";
@@ -17,15 +18,18 @@ var Form = function Form(_ref, ref) {
       initialValues = _ref.initialValues,
       fields = _ref.fields,
       form = _ref.form,
+      preserve = _ref.preserve,
       children = _ref.children,
       _ref$component = _ref.component,
       Component = _ref$component === void 0 ? 'form' : _ref$component,
       validateMessages = _ref.validateMessages,
+      _ref$validateTrigger = _ref.validateTrigger,
+      validateTrigger = _ref$validateTrigger === void 0 ? 'onChange' : _ref$validateTrigger,
       onValuesChange = _ref.onValuesChange,
       _onFieldsChange = _ref.onFieldsChange,
       _onFinish = _ref.onFinish,
       onFinishFailed = _ref.onFinishFailed,
-      restProps = _objectWithoutProperties(_ref, ["name", "initialValues", "fields", "form", "children", "component", "validateMessages", "onValuesChange", "onFieldsChange", "onFinish", "onFinishFailed"]);
+      restProps = _objectWithoutProperties(_ref, ["name", "initialValues", "fields", "form", "preserve", "children", "component", "validateMessages", "validateTrigger", "onValuesChange", "onFieldsChange", "onFinish", "onFinishFailed"]);
 
   var formContext = React.useContext(FormContext); // We customize handle event since Context will makes all the consumer re-render:
   // https://reactjs.org/docs/context.html#contextprovider
@@ -38,7 +42,8 @@ var Form = function Form(_ref, ref) {
       useSubscribe = _formInstance$getInte.useSubscribe,
       setInitialValues = _formInstance$getInte.setInitialValues,
       setCallbacks = _formInstance$getInte.setCallbacks,
-      setValidateMessages = _formInstance$getInte.setValidateMessages; // Pass ref with form instance
+      setValidateMessages = _formInstance$getInte.setValidateMessages,
+      setPreserve = _formInstance$getInte.setPreserve; // Pass ref with form instance
 
 
   React.useImperativeHandle(ref, function () {
@@ -74,7 +79,8 @@ var Form = function Form(_ref, ref) {
       }
     },
     onFinishFailed: onFinishFailed
-  }); // Set initial value, init store value when first mount
+  });
+  setPreserve(preserve); // Set initial value, init store value when first mount
 
   var mountRef = React.useRef(null);
   setInitialValues(initialValues, !mountRef.current);
@@ -103,15 +109,20 @@ var Form = function Form(_ref, ref) {
 
     prevFieldsRef.current = fields;
   }, [fields, formInstance]);
-  var wrapperNode = React.createElement(FieldContext.Provider, {
-    value: formInstance
+  var formContextValue = React.useMemo(function () {
+    return _objectSpread(_objectSpread({}, formInstance), {}, {
+      validateTrigger: validateTrigger
+    });
+  }, [formInstance, validateTrigger]);
+  var wrapperNode = /*#__PURE__*/React.createElement(FieldContext.Provider, {
+    value: formContextValue
   }, childrenNode);
 
   if (Component === false) {
     return wrapperNode;
   }
 
-  return React.createElement(Component, Object.assign({}, restProps, {
+  return /*#__PURE__*/React.createElement(Component, _extends({}, restProps, {
     onSubmit: function onSubmit(event) {
       event.preventDefault();
       event.stopPropagation();

@@ -10,7 +10,6 @@
 # production
 /dist
 /docs-dist
-/es
 /lib
 
 # misc
@@ -22,3 +21,6 @@
 .umi-production
 .umi-test
 .env.local
+
+.doc
+.storybook

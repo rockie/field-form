@@ -19,7 +19,7 @@ var FormProvider = function FormProvider(_ref) {
       children = _ref.children;
   var formContext = React.useContext(FormContext);
   var formsRef = React.useRef({});
-  return React.createElement(FormContext.Provider, {
+  return /*#__PURE__*/React.createElement(FormContext.Provider, {
     value: _objectSpread(_objectSpread({}, formContext), {}, {
       validateMessages: _objectSpread(_objectSpread({}, formContext.validateMessages), validateMessages),
       // =========================================================

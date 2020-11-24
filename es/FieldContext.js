@@ -24,12 +24,14 @@ var Context = React.createContext({
     warningFunc();
     return {
       dispatch: warningFunc,
+      initEntityValue: warningFunc,
       registerField: warningFunc,
       useSubscribe: warningFunc,
       setInitialValues: warningFunc,
       setCallbacks: warningFunc,
       getFields: warningFunc,
-      setValidateMessages: warningFunc
+      setValidateMessages: warningFunc,
+      setPreserve: warningFunc
     };
   }
 });

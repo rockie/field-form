@@ -13,7 +13,10 @@ import { move as _move, getNamePath } from './utils/valueUtil';
 
 var List = function List(_ref) {
   var name = _ref.name,
-      children = _ref.children;
+      initialValue = _ref.initialValue,
+      children = _ref.children,
+      rules = _ref.rules,
+      validateTrigger = _ref.validateTrigger;
   var context = React.useContext(FieldContext);
   var keyRef = React.useRef({
     keys: [],
@@ -39,14 +42,18 @@ var List = function List(_ref) {
     return prevValue !== nextValue;
   };
 
-  return React.createElement(FieldContext.Provider, {
+  return /*#__PURE__*/React.createElement(FieldContext.Provider, {
     value: _objectSpread(_objectSpread({}, context), {}, {
       prefixName: prefixName
     })
-  }, React.createElement(Field, {
+  }, /*#__PURE__*/React.createElement(Field, {
     name: [],
-    shouldUpdate: shouldUpdate
-  }, function (_ref3) {
+    shouldUpdate: shouldUpdate,
+    rules: rules,
+    validateTrigger: validateTrigger,
+    initialValue: initialValue,
+    isList: true
+  }, function (_ref3, meta) {
     var _ref3$value = _ref3.value,
         value = _ref3$value === void 0 ? [] : _ref3$value,
         onChange = _ref3.onChange;
@@ -62,32 +69,38 @@ var List = function List(_ref) {
 
 
     var operations = {
-      add: function add(defaultValue) {
+      add: function add(defaultValue, index) {
         // Mapping keys
-        keyManager.keys = [].concat(_toConsumableArray(keyManager.keys), [keyManager.id]);
-        keyManager.id += 1;
         var newValue = getNewValue();
-        onChange([].concat(_toConsumableArray(newValue), [defaultValue]));
-      },
-      remove: function remove(index) {
-        var newValue = getNewValue(); // Do not handle out of range
 
-        if (index < 0 || index >= newValue.length) {
-          return;
-        } // Update key mapping
-
-
-        var newKeys = keyManager.keys.map(function (key, id) {
-          if (id < index) {
-            return key;
+        if (index >= 0 && index <= newValue.length) {
+          keyManager.keys = [].concat(_toConsumableArray(keyManager.keys.slice(0, index)), [keyManager.id], _toConsumableArray(keyManager.keys.slice(index)));
+          onChange([].concat(_toConsumableArray(newValue.slice(0, index)), [defaultValue], _toConsumableArray(newValue.slice(index))));
+        } else {
+          if (process.env.NODE_ENV !== 'production' && (index < 0 || index > newValue.length)) {
+            warning(false, 'The second parameter of the add function should be a valid positive number.');
           }
 
-          return keyManager.keys[id + 1];
-        });
-        keyManager.keys = newKeys.slice(0, -1); // Trigger store change
+          keyManager.keys = [].concat(_toConsumableArray(keyManager.keys), [keyManager.id]);
+          onChange([].concat(_toConsumableArray(newValue), [defaultValue]));
+        }
 
-        onChange(newValue.filter(function (_, id) {
-          return id !== index;
+        keyManager.id += 1;
+      },
+      remove: function remove(index) {
+        var newValue = getNewValue();
+        var indexSet = new Set(Array.isArray(index) ? index : [index]);
+
+        if (indexSet.size <= 0) {
+          return;
+        }
+
+        keyManager.keys = keyManager.keys.filter(function (_, keysIndex) {
+          return !indexSet.has(keysIndex);
+        }); // Trigger store change
+
+        onChange(newValue.filter(function (_, valueIndex) {
+          return !indexSet.has(valueIndex);
         }));
       },
       move: function move(from, to) {
@@ -106,7 +119,17 @@ var List = function List(_ref) {
         onChange(_move(newValue, from, to));
       }
     };
-    return children(value.map(function (__, index) {
+    var listValue = value || [];
+
+    if (!Array.isArray(listValue)) {
+      listValue = [];
+
+      if (process.env.NODE_ENV !== 'production') {
+        warning(false, "Current value of '".concat(prefixName.join(' > '), "' is not an array type."));
+      }
+    }
+
+    return children(listValue.map(function (__, index) {
       var key = keyManager.keys[index];
 
       if (key === undefined) {
@@ -117,9 +140,10 @@ var List = function List(_ref) {
 
       return {
         name: index,
-        key: key
+        key: key,
+        isListField: true
       };
-    }), operations);
+    }), operations, meta);
   }));
 };
 

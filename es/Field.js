@@ -1,8 +1,10 @@
+import _extends from "@babel/runtime/helpers/esm/extends";
 import _objectWithoutProperties from "@babel/runtime/helpers/esm/objectWithoutProperties";
 import _defineProperty from "@babel/runtime/helpers/esm/defineProperty";
 import _toConsumableArray from "@babel/runtime/helpers/esm/toConsumableArray";
 import _classCallCheck from "@babel/runtime/helpers/esm/classCallCheck";
 import _createClass from "@babel/runtime/helpers/esm/createClass";
+import _assertThisInitialized from "@babel/runtime/helpers/esm/assertThisInitialized";
 import _inherits from "@babel/runtime/helpers/esm/inherits";
 import _possibleConstructorReturn from "@babel/runtime/helpers/esm/possibleConstructorReturn";
 import _getPrototypeOf from "@babel/runtime/helpers/esm/getPrototypeOf";
@@ -39,29 +41,37 @@ var Field = /*#__PURE__*/function (_React$Component) {
 
   var _super = _createSuper(Field);
 
-  function Field() {
+  // ============================== Subscriptions ==============================
+  function Field(props) {
     var _this;
 
     _classCallCheck(this, Field);
 
-    _this = _super.apply(this, arguments);
+    _this = _super.call(this, props);
     _this.state = {
       resetCount: 0
     };
     _this.cancelRegisterFunc = null;
-    _this.destroy = false;
+    _this.mounted = false;
     /**
      * Follow state should not management in State since it will async update by React.
      * This makes first render of form can not get correct state value.
      */
 
     _this.touched = false;
+    /** Mark when touched & validated. Currently only used for `dependencies` */
+
+    _this.dirty = false;
     _this.validatePromise = null;
     _this.errors = [];
 
     _this.cancelRegister = function () {
+      var _this$props = _this.props,
+          preserve = _this$props.preserve,
+          isListField = _this$props.isListField;
+
       if (_this.cancelRegisterFunc) {
-        _this.cancelRegisterFunc();
+        _this.cancelRegisterFunc(isListField, preserve);
       }
 
       _this.cancelRegisterFunc = null;
@@ -69,18 +79,22 @@ var Field = /*#__PURE__*/function (_React$Component) {
 
 
     _this.getNamePath = function () {
-      var name = _this.props.name;
-      var _this$context$prefixN = _this.context.prefixName,
-          prefixName = _this$context$prefixN === void 0 ? [] : _this$context$prefixN;
+      var _this$props2 = _this.props,
+          name = _this$props2.name,
+          fieldContext = _this$props2.fieldContext;
+      var _fieldContext$prefixN = fieldContext.prefixName,
+          prefixName = _fieldContext$prefixN === void 0 ? [] : _fieldContext$prefixN;
       return name !== undefined ? [].concat(_toConsumableArray(prefixName), _toConsumableArray(name)) : [];
     };
 
     _this.getRules = function () {
-      var _this$props$rules = _this.props.rules,
-          rules = _this$props$rules === void 0 ? [] : _this$props$rules;
+      var _this$props3 = _this.props,
+          _this$props3$rules = _this$props3.rules,
+          rules = _this$props3$rules === void 0 ? [] : _this$props3$rules,
+          fieldContext = _this$props3.fieldContext;
       return rules.map(function (rule) {
         if (typeof rule === 'function') {
-          return rule(_this.context);
+          return rule(fieldContext);
         }
 
         return rule;
@@ -88,7 +102,7 @@ var Field = /*#__PURE__*/function (_React$Component) {
     };
 
     _this.refresh = function () {
-      if (_this.destroy) return;
+      if (!_this.mounted) return;
       /**
        * Clean up current node.
        */
@@ -104,24 +118,24 @@ var Field = /*#__PURE__*/function (_React$Component) {
 
 
     _this.onStoreChange = function (prevStore, namePathList, info) {
-      var _this$props = _this.props,
-          shouldUpdate = _this$props.shouldUpdate,
-          _this$props$dependenc = _this$props.dependencies,
-          dependencies = _this$props$dependenc === void 0 ? [] : _this$props$dependenc,
-          onReset = _this$props.onReset;
-      var getFieldsValue = _this.context.getFieldsValue;
-      var values = getFieldsValue(true);
+      var _this$props4 = _this.props,
+          shouldUpdate = _this$props4.shouldUpdate,
+          _this$props4$dependen = _this$props4.dependencies,
+          dependencies = _this$props4$dependen === void 0 ? [] : _this$props4$dependen,
+          onReset = _this$props4.onReset;
+      var store = info.store;
 
       var namePath = _this.getNamePath();
 
       var prevValue = _this.getValue(prevStore);
 
-      var curValue = _this.getValue();
+      var curValue = _this.getValue(store);
 
       var namePathMatch = namePathList && containsNamePath(namePathList, namePath); // `setFieldsValue` is a quick access to update related status
 
       if (info.type === 'valueUpdate' && info.source === 'external' && prevValue !== curValue) {
         _this.touched = true;
+        _this.dirty = true;
         _this.validatePromise = null;
         _this.errors = [];
       }
@@ -131,6 +145,7 @@ var Field = /*#__PURE__*/function (_React$Component) {
           if (!namePathList || namePathMatch) {
             // Clean up state
             _this.touched = false;
+            _this.dirty = false;
             _this.validatePromise = null;
             _this.errors = [];
 
@@ -162,13 +177,15 @@ var Field = /*#__PURE__*/function (_React$Component) {
                 _this.errors = data.errors || [];
               }
 
+              _this.dirty = true;
+
               _this.reRender();
 
               return;
             } // Handle update by `setField` with `shouldUpdate`
 
 
-            if (shouldUpdate && !namePath.length && requireUpdate(shouldUpdate, prevStore, values, prevValue, curValue, info)) {
+            if (shouldUpdate && !namePath.length && requireUpdate(shouldUpdate, prevStore, store, prevValue, curValue, info)) {
               _this.reRender();
 
               return;
@@ -182,9 +199,11 @@ var Field = /*#__PURE__*/function (_React$Component) {
             /**
              * Trigger when marked `dependencies` updated. Related fields will all update
              */
-            var dependencyList = dependencies.map(getNamePath);
+            var dependencyList = dependencies.map(getNamePath); // No need for `namePathMath` check and `shouldUpdate` check, since `valueUpdate` will be
+            // emitted earlier and they will work there
+            // If set it may cause unnecessary twice rerendering
 
-            if (namePathMatch || dependencyList.some(function (dependency) {
+            if (dependencyList.some(function (dependency) {
               return containsNamePath(info.relatedFields, dependency);
             })) {
               _this.reRender();
@@ -196,15 +215,17 @@ var Field = /*#__PURE__*/function (_React$Component) {
           }
 
         default:
-          /**
-           * - If `namePath` exists in `namePathList`, means it's related value and should update.
-           * - If `dependencies` exists in `namePathList`, means upstream trigger update.
-           * - If `shouldUpdate` provided, use customize logic to update the field
-           *   - else to check if value changed
-           */
-          if (namePathMatch || dependencies.some(function (dependency) {
-            return containsNamePath(namePathList, getNamePath(dependency));
-          }) || requireUpdate(shouldUpdate, prevStore, values, prevValue, curValue, info)) {
+          // 1. If `namePath` exists in `namePathList`, means it's related value and should update
+          //      For example <List name="list"><Field name={['list', 0]}></List>
+          //      If `namePathList` is [['list']] (List value update), Field should be updated
+          //      If `namePathList` is [['list', 0]] (Field value update), List shouldn't be updated
+          // 2.
+          //   2.1 If `dependencies` is set, `name` is not set and `shouldUpdate` is not set,
+          //       don't use `shouldUpdate`. `dependencies` is view as a shortcut if `shouldUpdate`
+          //       is not provided
+          //   2.2 If `shouldUpdate` provided, use customize logic to update the field
+          //       else to check if value changed
+          if (namePathMatch || (!dependencies.length || namePath.length || shouldUpdate) && requireUpdate(shouldUpdate, prevStore, store, prevValue, curValue, info)) {
             _this.reRender();
 
             return;
@@ -219,47 +240,62 @@ var Field = /*#__PURE__*/function (_React$Component) {
     };
 
     _this.validateRules = function (options) {
-      var _this$props2 = _this.props,
-          _this$props2$validate = _this$props2.validateFirst,
-          validateFirst = _this$props2$validate === void 0 ? false : _this$props2$validate,
-          messageVariables = _this$props2.messageVariables;
-
-      var _ref2 = options || {},
-          triggerName = _ref2.triggerName;
-
+      // We should fixed namePath & value to avoid developer change then by form function
       var namePath = _this.getNamePath();
 
-      var filteredRules = _this.getRules();
+      var currentValue = _this.getValue(); // Force change to async to avoid rule OOD under renderProps field
 
-      if (triggerName) {
-        filteredRules = filteredRules.filter(function (rule) {
-          var validateTrigger = rule.validateTrigger;
 
-          if (!validateTrigger) {
-            return true;
-          }
-
-          var triggerList = toArray(validateTrigger);
-          return triggerList.includes(triggerName);
-        });
-      }
-
-      var promise = validateRules(namePath, _this.getValue(), filteredRules, options, validateFirst, messageVariables);
-      _this.validatePromise = promise;
-      _this.errors = [];
-      promise.catch(function (e) {
-        return e;
-      }).then(function () {
-        var errors = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : [];
-
-        if (_this.validatePromise === promise) {
-          _this.validatePromise = null;
-          _this.errors = errors;
-
-          _this.reRender();
+      var rootPromise = Promise.resolve().then(function () {
+        if (!_this.mounted) {
+          return [];
         }
+
+        var _this$props5 = _this.props,
+            _this$props5$validate = _this$props5.validateFirst,
+            validateFirst = _this$props5$validate === void 0 ? false : _this$props5$validate,
+            messageVariables = _this$props5.messageVariables;
+
+        var _ref2 = options || {},
+            triggerName = _ref2.triggerName;
+
+        var filteredRules = _this.getRules();
+
+        if (triggerName) {
+          filteredRules = filteredRules.filter(function (rule) {
+            var validateTrigger = rule.validateTrigger;
+
+            if (!validateTrigger) {
+              return true;
+            }
+
+            var triggerList = toArray(validateTrigger);
+            return triggerList.includes(triggerName);
+          });
+        }
+
+        var promise = validateRules(namePath, currentValue, filteredRules, options, validateFirst, messageVariables);
+        promise.catch(function (e) {
+          return e;
+        }).then(function () {
+          var errors = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : [];
+
+          if (_this.validatePromise === rootPromise) {
+            _this.validatePromise = null;
+            _this.errors = errors;
+
+            _this.reRender();
+          }
+        });
+        return promise;
       });
-      return promise;
+      _this.validatePromise = rootPromise;
+      _this.dirty = true;
+      _this.errors = []; // Force trigger re-render since we need sync renderProps with new meta
+
+      _this.reRender();
+
+      return rootPromise;
     };
 
     _this.isFieldValidating = function () {
@@ -270,8 +306,20 @@ var Field = /*#__PURE__*/function (_React$Component) {
       return _this.touched;
     };
 
+    _this.isFieldDirty = function () {
+      return _this.dirty;
+    };
+
     _this.getErrors = function () {
       return _this.errors;
+    };
+
+    _this.isListField = function () {
+      return _this.props.isListField;
+    };
+
+    _this.isList = function () {
+      return _this.props.isList;
     }; // ============================= Child Component =============================
 
 
@@ -293,7 +341,7 @@ var Field = /*#__PURE__*/function (_React$Component) {
       if (typeof children === 'function') {
         var meta = _this.getMeta();
 
-        return _objectSpread(_objectSpread({}, _this.getOnlyChild(children(_this.getControlled(), meta, _this.context))), {}, {
+        return _objectSpread(_objectSpread({}, _this.getOnlyChild(children(_this.getControlled(), meta, _this.props.fieldContext))), {}, {
           isFunction: true
         });
       } // Filed element only
@@ -316,7 +364,7 @@ var Field = /*#__PURE__*/function (_React$Component) {
 
 
     _this.getValue = function (store) {
-      var getFieldsValue = _this.context.getFieldsValue;
+      var getFieldsValue = _this.props.fieldContext.getFieldsValue;
 
       var namePath = _this.getNamePath();
 
@@ -325,19 +373,20 @@ var Field = /*#__PURE__*/function (_React$Component) {
 
     _this.getControlled = function () {
       var childProps = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
-      var _this$props3 = _this.props,
-          trigger = _this$props3.trigger,
-          validateTrigger = _this$props3.validateTrigger,
-          getValueFromEvent = _this$props3.getValueFromEvent,
-          normalize = _this$props3.normalize,
-          valuePropName = _this$props3.valuePropName,
-          getValueProps = _this$props3.getValueProps;
+      var _this$props6 = _this.props,
+          trigger = _this$props6.trigger,
+          validateTrigger = _this$props6.validateTrigger,
+          getValueFromEvent = _this$props6.getValueFromEvent,
+          normalize = _this$props6.normalize,
+          valuePropName = _this$props6.valuePropName,
+          getValueProps = _this$props6.getValueProps,
+          fieldContext = _this$props6.fieldContext;
+      var mergedValidateTrigger = validateTrigger !== undefined ? validateTrigger : fieldContext.validateTrigger;
 
       var namePath = _this.getNamePath();
 
-      var _this$context = _this.context,
-          getInternalHooks = _this$context.getInternalHooks,
-          getFieldsValue = _this$context.getFieldsValue;
+      var getInternalHooks = fieldContext.getInternalHooks,
+          getFieldsValue = fieldContext.getFieldsValue;
 
       var _getInternalHooks = getInternalHooks(HOOK_MARK),
           dispatch = _getInternalHooks.dispatch;
@@ -357,6 +406,7 @@ var Field = /*#__PURE__*/function (_React$Component) {
       control[trigger] = function () {
         // Mark as touched
         _this.touched = true;
+        _this.dirty = true;
         var newValue;
 
         for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
@@ -385,7 +435,7 @@ var Field = /*#__PURE__*/function (_React$Component) {
       }; // Add validateTrigger
 
 
-      var validateTriggerList = toArray(validateTrigger || []);
+      var validateTriggerList = toArray(mergedValidateTrigger || []);
       validateTriggerList.forEach(function (triggerName) {
         // Wrap additional function of component, so that we can get latest value from store
         var originTrigger = control[triggerName];
@@ -410,22 +460,38 @@ var Field = /*#__PURE__*/function (_React$Component) {
         };
       });
       return control;
-    };
+    }; // Register on init
+
+
+    if (props.fieldContext) {
+      var getInternalHooks = props.fieldContext.getInternalHooks;
+
+      var _getInternalHooks2 = getInternalHooks(HOOK_MARK),
+          initEntityValue = _getInternalHooks2.initEntityValue;
+
+      initEntityValue(_assertThisInitialized(_this));
+    }
 
     return _this;
-  } // ============================== Subscriptions ==============================
-
+  }
 
   _createClass(Field, [{
     key: "componentDidMount",
     value: function componentDidMount() {
-      var shouldUpdate = this.props.shouldUpdate;
-      var getInternalHooks = this.context.getInternalHooks;
+      var _this$props7 = this.props,
+          shouldUpdate = _this$props7.shouldUpdate,
+          fieldContext = _this$props7.fieldContext;
+      this.mounted = true; // Register on init
 
-      var _getInternalHooks2 = getInternalHooks(HOOK_MARK),
-          registerField = _getInternalHooks2.registerField;
+      if (fieldContext) {
+        var getInternalHooks = fieldContext.getInternalHooks;
 
-      this.cancelRegisterFunc = registerField(this); // One more render for component in case fields not ready
+        var _getInternalHooks3 = getInternalHooks(HOOK_MARK),
+            registerField = _getInternalHooks3.registerField;
+
+        this.cancelRegisterFunc = registerField(this);
+      } // One more render for component in case fields not ready
+
 
       if (shouldUpdate === true) {
         this.reRender();
@@ -435,12 +501,12 @@ var Field = /*#__PURE__*/function (_React$Component) {
     key: "componentWillUnmount",
     value: function componentWillUnmount() {
       this.cancelRegister();
-      this.destroy = true;
+      this.mounted = false;
     }
   }, {
     key: "reRender",
     value: function reRender() {
-      if (this.destroy) return;
+      if (!this.mounted) return;
       this.forceUpdate();
     }
   }, {
@@ -465,7 +531,7 @@ var Field = /*#__PURE__*/function (_React$Component) {
         returnChildNode = child;
       }
 
-      return React.createElement(React.Fragment, {
+      return /*#__PURE__*/React.createElement(React.Fragment, {
         key: resetCount
       }, returnChildNode);
     }
@@ -477,19 +543,31 @@ var Field = /*#__PURE__*/function (_React$Component) {
 Field.contextType = FieldContext;
 Field.defaultProps = {
   trigger: 'onChange',
-  validateTrigger: 'onChange',
   valuePropName: 'value'
 };
 
-var WrapperField = function WrapperField(_ref4) {
+function WrapperField(_ref4) {
   var name = _ref4.name,
       restProps = _objectWithoutProperties(_ref4, ["name"]);
 
+  var fieldContext = React.useContext(FieldContext);
   var namePath = name !== undefined ? getNamePath(name) : undefined;
-  return React.createElement(Field, Object.assign({
-    key: "_".concat((namePath || []).join('_')),
+  var key = 'keep';
+
+  if (!restProps.isListField) {
+    key = "_".concat((namePath || []).join('_'));
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    warning(restProps.preserve !== false || !restProps.isListField, '`preserve` should not apply on Form.List fields.');
+  }
+
+  return /*#__PURE__*/React.createElement(Field, _extends({
+    key: key,
     name: namePath
-  }, restProps));
-};
+  }, restProps, {
+    fieldContext: fieldContext
+  }));
+}
 
 export default WrapperField;
