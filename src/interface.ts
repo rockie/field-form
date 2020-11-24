@@ -46,9 +46,14 @@ type Validator = (
   rule: RuleObject,
   value: StoreValue,
   callback: (error?: string) => void,
-) => Promise<void> | void;
+) => Promise<void | any> | void;
 
 export type RuleRender = (form: FormInstance) => RuleObject;
+
+export interface ValidatorRule {
+  message?: string | ReactElement;
+  validator: Validator;
+}
 
 interface BaseRule {
   enum?: StoreValue[];
@@ -60,32 +65,40 @@ interface BaseRule {
   required?: boolean;
   transform?: (value: StoreValue) => StoreValue;
   type?: RuleType;
-  validator?: Validator;
   whitespace?: boolean;
 
   /** Customize rule level `validateTrigger`. Must be subset of Field `validateTrigger` */
   validateTrigger?: string | string[];
 }
 
-interface ArrayRule extends Omit<BaseRule, 'type'> {
+type AggregationRule = BaseRule & Partial<ValidatorRule>;
+
+interface ArrayRule extends Omit<AggregationRule, 'type'> {
   type: 'array';
   defaultField?: RuleObject;
 }
 
-export type RuleObject = BaseRule | ArrayRule;
+export type RuleObject = AggregationRule | ArrayRule;
 
 export type Rule = RuleObject | RuleRender;
 
-export interface ValidateErrorEntity {
-  values: Store;
+export interface ValidateErrorEntity<Values = any> {
+  values: Values;
   errorFields: { name: InternalNamePath; errors: string[] }[];
   outOfDate: boolean;
 }
 
 export interface FieldEntity {
-  onStoreChange: (store: Store, namePathList: InternalNamePath[] | null, info: NotifyInfo) => void;
+  onStoreChange: (
+    store: Store,
+    namePathList: InternalNamePath[] | null,
+    info: ValuedNotifyInfo,
+  ) => void;
   isFieldTouched: () => boolean;
+  isFieldDirty: () => boolean;
   isFieldValidating: () => boolean;
+  isListField: () => boolean;
+  isList: () => boolean;
   validateRules: (options?: ValidateOptions) => Promise<string[]>;
   getMeta: () => Meta;
   getNamePath: () => InternalNamePath;
@@ -106,6 +119,11 @@ export interface FieldError {
 export interface ValidateOptions {
   triggerName?: string;
   validateMessages?: ValidateMessages;
+  /**
+   * Recursive validate. It will validate all the name path that contains the provided one.
+   * e.g. ['a'] will validate ['a'] , ['a', 'b'] and ['a', 1].
+   */
+  recursive?: boolean;
 }
 
 export type InternalValidateFields = (
@@ -114,51 +132,81 @@ export type InternalValidateFields = (
 ) => Promise<Store>;
 export type ValidateFields = (nameList?: NamePath[]) => Promise<Store>;
 
+// >>>>>> Info
 interface ValueUpdateInfo {
   type: 'valueUpdate';
   source: 'internal' | 'external';
 }
 
+interface ValidateFinishInfo {
+  type: 'validateFinish';
+}
+
+interface ResetInfo {
+  type: 'reset';
+}
+
+interface SetFieldInfo {
+  type: 'setField';
+  data: FieldData;
+}
+
+interface DependenciesUpdateInfo {
+  type: 'dependenciesUpdate';
+  /**
+   * Contains all the related `InternalNamePath[]`.
+   * a <- b <- c : change `a`
+   * relatedFields=[a, b, c]
+   */
+  relatedFields: InternalNamePath[];
+}
+
 export type NotifyInfo =
   | ValueUpdateInfo
-  | {
-      type: 'validateFinish' | 'reset';
-    }
-  | {
-      type: 'setField';
-      data: FieldData;
-    }
-  | {
-      type: 'dependenciesUpdate';
-      /**
-       * Contains all the related `InternalNamePath[]`.
-       * a <- b <- c : change `a`
-       * relatedFields=[a, b, c]
-       */
-      relatedFields: InternalNamePath[];
-    };
+  | ValidateFinishInfo
+  | ResetInfo
+  | SetFieldInfo
+  | DependenciesUpdateInfo;
 
-export interface Callbacks {
-  onValuesChange?: (changedValues: Store, values: Store) => void;
+export type ValuedNotifyInfo = NotifyInfo & {
+  store: Store;
+};
+
+export interface Callbacks<Values = any> {
+  onValuesChange?: (changedValues: any, values: Values) => void;
   onFieldsChange?: (changedFields: FieldData[], allFields: FieldData[]) => void;
-  onFinish?: (values: Store) => void;
-  onFinishFailed?: (errorInfo: ValidateErrorEntity) => void;
+  onFinish?: (values: Values) => void;
+  onFinishFailed?: (errorInfo: ValidateErrorEntity<Values>) => void;
 }
 
 export interface InternalHooks {
   dispatch: (action: ReducerAction) => void;
+  initEntityValue: (entity: FieldEntity) => void;
   registerField: (entity: FieldEntity) => () => void;
   useSubscribe: (subscribable: boolean) => void;
   setInitialValues: (values: Store, init: boolean) => void;
   setCallbacks: (callbacks: Callbacks) => void;
   getFields: (namePathList?: InternalNamePath[]) => FieldData[];
   setValidateMessages: (validateMessages: ValidateMessages) => void;
+  setPreserve: (preserve?: boolean) => void;
 }
 
-export interface FormInstance {
+/** Only return partial when type is not any */
+type RecursivePartial<T> = T extends object
+  ? {
+      [P in keyof T]?: T[P] extends (infer U)[]
+        ? RecursivePartial<U>[]
+        : T[P] extends object
+        ? RecursivePartial<T[P]>
+        : T[P];
+    }
+  : any;
+
+export interface FormInstance<Values = any> {
   // Origin Form API
   getFieldValue: (name: NamePath) => StoreValue;
-  getFieldsValue: (nameList?: NamePath[] | true, filterFunc?: (meta: Meta) => boolean) => Store;
+  getFieldsValue(): Values;
+  getFieldsValue(nameList: NamePath[] | true, filterFunc?: (meta: Meta) => boolean): any;
   getFieldError: (name: NamePath) => string[];
   getFieldsError: (nameList?: NamePath[]) => FieldError[];
   isFieldsTouched(nameList?: NamePath[], allFieldsTouched?: boolean): boolean;
@@ -168,7 +216,7 @@ export interface FormInstance {
   isFieldsValidating: (nameList: NamePath[]) => boolean;
   resetFields: (fields?: NamePath[]) => void;
   setFields: (fields: FieldData[]) => void;
-  setFieldsValue: (value: Store) => void;
+  setFieldsValue: (value: RecursivePartial<Values>) => void;
   validateFields: ValidateFields;
 
   // New API
@@ -182,6 +230,8 @@ export type InternalFormInstance = Omit<FormInstance, 'validateFields'> & {
    * Passed by field context props
    */
   prefixName?: InternalNamePath;
+
+  validateTrigger?: string | string[] | false;
 
   /**
    * Form component should register some content into store.
