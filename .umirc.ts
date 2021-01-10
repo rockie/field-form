@@ -7,5 +7,13 @@ export default defineConfig({
     'https://avatars0.githubusercontent.com/u/9441414?s=200&v=4',
   logo:
     'https://avatars0.githubusercontent.com/u/9441414?s=200&v=4',
-  outputPath: '.doc'
+  outputPath: '.doc',
+  exportStatic: {},
+  styles: [
+    `
+      .markdown table {
+        width: auto !important;
+      }
+    `,
+  ]
 });
